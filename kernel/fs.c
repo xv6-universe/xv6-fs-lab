@@ -173,7 +173,6 @@ bfree(int dev, uint b)
 // read or write that inode's ip->valid, ip->size, ip->type, &c.
 
 struct {
-  struct spinlock lock;
   struct xv6fs_inode inode[NINODE];
 } itable;
 
@@ -182,7 +181,6 @@ iinit()
 {
   int i = 0;
   
-  initlock(&itable.lock, "itable");
   for(i = 0; i < NINODE; i++) {
     initsleeplock(&itable.inode[i].lock, "inode");
   }
@@ -247,14 +245,11 @@ iget(uint dev, uint inum)
 {
   struct xv6fs_inode *ip, *empty;
 
-  acquire(&itable.lock);
-
   // Is the inode already in the table?
   empty = 0;
   for(ip = &itable.inode[0]; ip < &itable.inode[NINODE]; ip++){
     if(ip->ref > 0 && ip->dev == dev && ip->inum == inum){
       ip->ref++;
-      release(&itable.lock);
       return ip;
     }
     if(empty == 0 && ip->ref == 0)    // Remember empty slot.
@@ -270,7 +265,6 @@ iget(uint dev, uint inum)
   ip->inum = inum;
   ip->ref = 1;
   ip->valid = 0;
-  release(&itable.lock);
 
   return ip;
 }
@@ -280,9 +274,7 @@ iget(uint dev, uint inum)
 struct xv6fs_inode*
 idup(struct xv6fs_inode *ip)
 {
-  acquire(&itable.lock);
   ip->ref++;
-  release(&itable.lock);
   return ip;
 }
 
@@ -335,8 +327,6 @@ iunlock(struct xv6fs_inode *ip)
 void
 iput(struct xv6fs_inode *ip)
 {
-  acquire(&itable.lock);
-
   if(ip->ref == 1 && ip->valid && ip->nlink == 0){
     // inode has no links and no other references: truncate and free.
 
@@ -344,20 +334,15 @@ iput(struct xv6fs_inode *ip)
     // so this acquiresleep() won't block (or deadlock).
     acquiresleep(&ip->lock);
 
-    release(&itable.lock);
-
     itrunc(ip);
     ip->type = 0;
     iupdate(ip);
     ip->valid = 0;
 
     releasesleep(&ip->lock);
-
-    acquire(&itable.lock);
   }
 
   ip->ref--;
-  release(&itable.lock);
 }
 
 // Common idiom: unlock, then put.

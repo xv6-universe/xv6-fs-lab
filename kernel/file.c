@@ -15,14 +15,12 @@
 
 struct devsw devsw[NDEV];
 struct {
-  struct spinlock lock;
   struct xv6fs_file file[NFILE];
 } ftable;
 
 void
 fileinit(void)
 {
-  initlock(&ftable.lock, "ftable");
 }
 
 // Allocate a file structure.
@@ -31,15 +29,12 @@ filealloc(void)
 {
   struct xv6fs_file *f;
 
-  acquire(&ftable.lock);
   for(f = ftable.file; f < ftable.file + NFILE; f++){
     if(f->ref == 0){
       f->ref = 1;
-      release(&ftable.lock);
       return f;
     }
   }
-  release(&ftable.lock);
   return 0;
 }
 
@@ -47,11 +42,9 @@ filealloc(void)
 struct xv6fs_file*
 filedup(struct xv6fs_file *f)
 {
-  acquire(&ftable.lock);
   if(f->ref < 1)
     panic("filedup");
   f->ref++;
-  release(&ftable.lock);
   return f;
 }
 
@@ -61,17 +54,14 @@ fileclose(struct xv6fs_file *f)
 {
   struct xv6fs_file ff;
 
-  acquire(&ftable.lock);
   if(f->ref < 1)
     panic("fileclose");
   if(--f->ref > 0){
-    release(&ftable.lock);
     return;
   }
   ff = *f;
   f->ref = 0;
   f->type = FD_NONE;
-  release(&ftable.lock);
 
   if(ff.type == FD_PIPE){
     pipeclose(ff.pipe, ff.writable);
