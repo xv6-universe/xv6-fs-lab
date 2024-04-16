@@ -1,3 +1,8 @@
+#pragma once
+
+#include "riscv.h"
+#include "types.h"
+
 struct buf;
 struct context;
 struct file;
@@ -53,11 +58,6 @@ int             readi(struct inode*, int, uint64, uint, uint);
 void            stati(struct inode*, struct stat*);
 int             writei(struct inode*, int, uint64, uint, uint);
 void            itrunc(struct inode*);
-
-// ramdisk.c
-void            ramdiskinit(void);
-void            ramdiskintr(void);
-void            ramdiskrw(struct buf*);
 
 // kalloc.c
 void*           kalloc(void);
