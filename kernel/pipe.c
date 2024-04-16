@@ -20,7 +20,7 @@ struct pipe {
 };
 
 int
-pipealloc(struct file **f0, struct file **f1)
+pipealloc(struct xv6fs_file **f0, struct xv6fs_file **f1)
 {
   struct pipe *pi;
 

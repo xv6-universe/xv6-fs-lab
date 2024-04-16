@@ -15,7 +15,7 @@
 //
 // mkfs computes the super block and builds an initial file system. The
 // super block describes the disk layout:
-struct superblock {
+struct xv6fs_super_block {
   uint magic;        // Must be FSMAGIC
   uint size;         // Size of file system image (blocks)
   uint nblocks;      // Number of data blocks
@@ -54,10 +54,10 @@ struct dinode {
 // Block of free map containing bit for block b
 #define BBLOCK(b, sb) ((b)/BPB + sb.bmapstart)
 
-// Directory is a file containing a sequence of dirent structures.
+// Directory is a file containing a sequence of xv6fs_dentry structures.
 #define DIRSIZ 14
 
-struct dirent {
+struct xv6fs_dentry {
   ushort inum;
   char name[DIRSIZ];
 };

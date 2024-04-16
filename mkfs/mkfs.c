@@ -27,7 +27,7 @@ int nmeta;    // Number of meta blocks (boot, sb, nlog, inode, bitmap)
 int nblocks;  // Number of data blocks
 
 int fsfd;
-struct superblock sb;
+struct xv6fs_super_block sb;
 char zeroes[BSIZE];
 uint freeinode = 1;
 uint freeblock;
@@ -70,7 +70,7 @@ main(int argc, char *argv[])
 {
   int i, cc, fd;
   uint rootino, inum, off;
-  struct dirent de;
+  struct xv6fs_dentry de;
   char buf[BSIZE];
   struct dinode din;
 
@@ -83,7 +83,7 @@ main(int argc, char *argv[])
   }
 
   assert((BSIZE % sizeof(struct dinode)) == 0);
-  assert((BSIZE % sizeof(struct dirent)) == 0);
+  assert((BSIZE % sizeof(struct xv6fs_dentry)) == 0);
 
   fsfd = open(argv[1], O_RDWR|O_CREAT|O_TRUNC, 0666);
   if(fsfd < 0)

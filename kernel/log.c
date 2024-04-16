@@ -52,7 +52,7 @@ static void recover_from_log(void);
 static void commit();
 
 void
-initlog(int dev, struct superblock *sb)
+initlog(int dev, struct xv6fs_super_block *sb)
 {
   if (sizeof(struct logheader) >= BSIZE)
     panic("initlog: too big logheader");

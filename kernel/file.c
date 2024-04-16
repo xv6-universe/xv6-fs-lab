@@ -16,7 +16,7 @@
 struct devsw devsw[NDEV];
 struct {
   struct spinlock lock;
-  struct file file[NFILE];
+  struct xv6fs_file file[NFILE];
 } ftable;
 
 void
@@ -26,10 +26,10 @@ fileinit(void)
 }
 
 // Allocate a file structure.
-struct file*
+struct xv6fs_file*
 filealloc(void)
 {
-  struct file *f;
+  struct xv6fs_file *f;
 
   acquire(&ftable.lock);
   for(f = ftable.file; f < ftable.file + NFILE; f++){
@@ -44,8 +44,8 @@ filealloc(void)
 }
 
 // Increment ref count for file f.
-struct file*
-filedup(struct file *f)
+struct xv6fs_file*
+filedup(struct xv6fs_file *f)
 {
   acquire(&ftable.lock);
   if(f->ref < 1)
@@ -57,9 +57,9 @@ filedup(struct file *f)
 
 // Close file f.  (Decrement ref count, close when reaches 0.)
 void
-fileclose(struct file *f)
+fileclose(struct xv6fs_file *f)
 {
-  struct file ff;
+  struct xv6fs_file ff;
 
   acquire(&ftable.lock);
   if(f->ref < 1)
@@ -85,7 +85,7 @@ fileclose(struct file *f)
 // Get metadata about file f.
 // addr is a user virtual address, pointing to a struct stat.
 int
-filestat(struct file *f, uint64 addr)
+filestat(struct xv6fs_file *f, uint64 addr)
 {
   struct proc *p = myproc();
   struct stat st;
@@ -104,7 +104,7 @@ filestat(struct file *f, uint64 addr)
 // Read from file f.
 // addr is a user virtual address.
 int
-fileread(struct file *f, uint64 addr, int n)
+fileread(struct xv6fs_file *f, uint64 addr, int n)
 {
   int r = 0;
 
@@ -132,7 +132,7 @@ fileread(struct file *f, uint64 addr, int n)
 // Write to file f.
 // addr is a user virtual address.
 int
-filewrite(struct file *f, uint64 addr, int n)
+filewrite(struct xv6fs_file *f, uint64 addr, int n)
 {
   int r, ret = 0;
 

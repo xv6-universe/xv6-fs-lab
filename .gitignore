@@ -16,6 +16,6 @@ kernel/kernel
 user/usys.S
 .gdbinit
 
-compile_commands.json
+compile_commands.*
 .vscode
 .cache

@@ -27,7 +27,7 @@ ls(char *path)
 {
   char buf[512], *p;
   int fd;
-  struct dirent de;
+  struct xv6fs_dentry de;
   struct stat st;
 
   if((fd = open(path, 0)) < 0){
