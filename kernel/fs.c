@@ -43,7 +43,6 @@ fsinit(int dev) {
   readsb(dev, &sb);
   if(sb.magic != FSMAGIC)
     panic("invalid file system");
-  initlog(dev, &sb);
 }
 
 // Zero a block.
@@ -54,7 +53,7 @@ bzero(int dev, int bno)
 
   bp = bread(dev, bno);
   memset(bp->data, 0, BSIZE);
-  log_write(bp);
+  bwrite(bp);
   brelse(bp);
 }
 
@@ -75,7 +74,7 @@ balloc(uint dev)
       m = 1 << (bi % 8);
       if((bp->data[bi/8] & m) == 0){  // Is block free?
         bp->data[bi/8] |= m;  // Mark block in use.
-        log_write(bp);
+        bwrite(bp);
         brelse(bp);
         bzero(dev, b + bi);
         return b + bi;
@@ -100,7 +99,7 @@ bfree(int dev, uint b)
   if((bp->data[bi/8] & m) == 0)
     panic("freeing free block");
   bp->data[bi/8] &= ~m;
-  log_write(bp);
+  bwrite(bp);
   brelse(bp);
 }
 
@@ -208,7 +207,7 @@ ialloc(uint dev, short type)
     if(dip->type == 0){  // a free inode
       memset(dip, 0, sizeof(*dip));
       dip->type = type;
-      log_write(bp);   // mark it allocated on the disk
+      bwrite(bp);   // mark it allocated on the disk
       brelse(bp);
       return iget(dev, inum);
     }
@@ -236,7 +235,7 @@ iupdate(struct xv6fs_inode *ip)
   dip->nlink = ip->nlink;
   dip->size = ip->size;
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
-  log_write(bp);
+  bwrite(bp);
   brelse(bp);
 }
 
@@ -410,7 +409,7 @@ bmap(struct xv6fs_inode *ip, uint bn)
       addr = balloc(ip->dev);
       if(addr){
         a[bn] = addr;
-        log_write(bp);
+        bwrite(bp);
       }
     }
     brelse(bp);
@@ -523,7 +522,7 @@ writei(struct xv6fs_inode *ip, int user_src, uint64 src, uint off, uint n)
       brelse(bp);
       break;
     }
-    log_write(bp);
+    bwrite(bp);
     brelse(bp);
   }
 

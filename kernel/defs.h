@@ -64,12 +64,6 @@ void*           kalloc(void);
 void            kfree(void *);
 void            kinit(void);
 
-// log.c
-void            initlog(int, struct xv6fs_super_block*);
-void            log_write(struct buf*);
-void            begin_op(void);
-void            end_op(void);
-
 // pipe.c
 int             pipealloc(struct xv6fs_file**, struct xv6fs_file**);
 void            pipeclose(struct pipe*, int);
