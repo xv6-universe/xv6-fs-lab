@@ -4,9 +4,10 @@
 #include "param.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "fs.h"
+#include "xv6fs/fs.h"
 #include "sleeplock.h"
-#include "file.h"
+#include "xv6fs/file.h"
+#include "xv6fs/defs.h"
 
 #define PIPESIZE 512
 

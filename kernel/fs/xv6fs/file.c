@@ -4,8 +4,10 @@
 
 #include "types.h"
 #include "riscv.h"
+#include "kernel/defs.h"
 #include "defs.h"
 #include "param.h"
+#include "buf.h"
 #include "fs.h"
 #include "spinlock.h"
 #include "sleeplock.h"

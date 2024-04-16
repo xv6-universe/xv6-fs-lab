@@ -4,10 +4,9 @@
 #include "kernel/stat.h"
 #include "kernel/spinlock.h"
 #include "kernel/sleeplock.h"
-#include "kernel/fs.h"
-#include "kernel/file.h"
+#include "kernel/fs/xv6fs/file.h"
 #include "user/user.h"
-#include "kernel/fcntl.h"
+#include "kernel/xv6_fcntl.h"
 
 char *argv[] = { "sh", 0 };
 

@@ -11,10 +11,10 @@
 #include "stat.h"
 #include "spinlock.h"
 #include "proc.h"
-#include "fs.h"
 #include "sleeplock.h"
-#include "file.h"
-#include "fcntl.h"
+#include "xv6fs/file.h"
+#include "xv6fs/defs.h"
+#include "xv6_fcntl.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.

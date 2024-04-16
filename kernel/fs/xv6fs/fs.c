@@ -11,6 +11,7 @@
 
 #include "types.h"
 #include "riscv.h"
+#include "kernel/defs.h"
 #include "defs.h"
 #include "param.h"
 #include "stat.h"

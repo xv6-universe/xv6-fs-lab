@@ -2,7 +2,7 @@
 
 #include "kernel/types.h"
 #include "user/user.h"
-#include "kernel/fcntl.h"
+#include "kernel/xv6_fcntl.h"
 
 // Parsed command representation
 #define EXEC  1

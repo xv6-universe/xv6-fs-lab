@@ -6,6 +6,7 @@
 #include "proc.h"
 #include "defs.h"
 #include "elf.h"
+#include "xv6fs/defs.h"
 
 static int loadseg(pde_t *, uint64, struct xv6fs_inode *, uint, uint);
 

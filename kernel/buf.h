@@ -1,8 +1,9 @@
 #pragma once
 
-#include "fs.h"
 #include "sleeplock.h"
 #include "types.h"
+
+#define BSIZE 1024  // block size
 
 struct buf {
   int valid;   // has data been read from disk?

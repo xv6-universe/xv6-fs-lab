@@ -1,6 +1,6 @@
 #include "kernel/types.h"
 #include "kernel/stat.h"
-#include "kernel/fcntl.h"
+#include "kernel/xv6_fcntl.h"
 #include "user/user.h"
 
 //
