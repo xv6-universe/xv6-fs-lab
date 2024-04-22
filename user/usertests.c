@@ -2640,6 +2640,37 @@ struct test {
   { 0, 0},
 };
 
+struct test fstests1[] = {
+  {truncate1, "truncate1"},
+  {truncate2, "truncate2"},
+  {truncate3, "truncate3"},
+  {openiputtest, "openiput"},
+  {exitiputtest, "exitiput"},
+  {iputtest, "iput"},
+  {opentest, "opentest"},
+  {writetest, "writetest"},
+  {writebig, "writebig"},
+  {createtest, "createtest"},
+  {dirtest, "dirtest"},
+  {exectest, "exectest"},
+  {sharedfd, "sharedfd"},
+  {fourfiles, "fourfiles"},
+  {createdelete, "createdelete"},
+  {unlinkread, "unlinkread"},
+  {linktest, "linktest"},
+  {concreate, "concreate"},
+  {linkunlink, "linkunlink"},
+  {subdir, "subdir"},
+  {bigwrite, "bigwrite"},
+  {bigfile, "bigfile"},
+  {fourteen, "fourteen"},
+  {rmdot, "rmdot"},
+  {dirfile, "dirfile"},
+  {iref, "iref"},
+  {textwrite, "textwrite"},
+  { 0, 0},
+};
+
 //
 // Section with tests that take a fair bit of time
 //
@@ -3046,7 +3077,13 @@ countfree()
 }
 
 int
-drivetests(int quick, int continuous, char *justone) {
+drivetests(int quick, int continuous, int fs, char *justone) {
+  if (fs == 1) {
+    if (runtests(fstests1, justone)) {
+      return 1;
+    }
+    return 0;
+  }
   do {
     printf("usertests starting\n");
     int free0 = countfree();
@@ -3080,6 +3117,7 @@ main(int argc, char *argv[])
 {
   int continuous = 0;
   int quick = 0;
+  int fs = 1;
   char *justone = 0;
 
   if(argc == 2 && strcmp(argv[1], "-q") == 0){
@@ -3088,13 +3126,15 @@ main(int argc, char *argv[])
     continuous = 1;
   } else if(argc == 2 && strcmp(argv[1], "-C") == 0){
     continuous = 2;
+  } else if(argc == 2 && strcmp(argv[1], "--fs=1") == 0){
+    fs = 1;
   } else if(argc == 2 && argv[1][0] != '-'){
     justone = argv[1];
   } else if(argc > 1){
-    printf("Usage: usertests [-c] [-C] [-q] [testname]\n");
+    printf("Usage: usertests [-c] [-C] [-q] [--fs=1] [testname]\n");
     exit(1);
   }
-  if (drivetests(quick, continuous, justone)) {
+  if (drivetests(quick, continuous, fs, justone)) {
     exit(1);
   }
   printf("ALL TESTS PASSED\n");

@@ -132,7 +132,9 @@ UPROGS=\
 	$U/_wc\
 	$U/_zombie\
 
+.PHONY: fs.img
 fs.img: mkfs/mkfs README $(UPROGS)
+	rm -f fs.img
 	mkfs/mkfs fs.img README $(UPROGS)
 
 -include kernel/*.d user/*.d
