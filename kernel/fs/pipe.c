@@ -27,7 +27,7 @@ pipealloc(struct xv6fs_file **f0, struct xv6fs_file **f1)
 
   pi = 0;
   *f0 = *f1 = 0;
-  if((*f0 = filealloc()) == 0 || (*f1 = filealloc()) == 0)
+  if((*f0 = xv6fs_filealloc()) == 0 || (*f1 = xv6fs_filealloc()) == 0)
     goto bad;
   if((pi = (struct pipe*)kalloc()) == 0)
     goto bad;
@@ -50,9 +50,9 @@ pipealloc(struct xv6fs_file **f0, struct xv6fs_file **f1)
   if(pi)
     kfree((char*)pi);
   if(*f0)
-    fileclose(*f0);
+    xv6fs_fileclose(*f0);
   if(*f1)
-    fileclose(*f1);
+    xv6fs_fileclose(*f1);
   return -1;
 }
 

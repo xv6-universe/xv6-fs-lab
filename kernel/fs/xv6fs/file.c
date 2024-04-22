@@ -21,13 +21,13 @@ struct {
 } ftable;
 
 void
-fileinit(void)
+xv6fs_fileinit(void)
 {
 }
 
 // Allocate a file structure.
 struct xv6fs_file*
-filealloc(void)
+xv6fs_filealloc(void)
 {
   struct xv6fs_file *f;
 
@@ -42,7 +42,7 @@ filealloc(void)
 
 // Increment ref count for file f.
 struct xv6fs_file*
-filedup(struct xv6fs_file *f)
+xv6fs_filedup(struct xv6fs_file *f)
 {
   if(f->ref < 1)
     panic("filedup");
@@ -52,7 +52,7 @@ filedup(struct xv6fs_file *f)
 
 // Close file f.  (Decrement ref count, close when reaches 0.)
 void
-fileclose(struct xv6fs_file *f)
+xv6fs_fileclose(struct xv6fs_file *f)
 {
   struct xv6fs_file ff;
 
@@ -68,22 +68,22 @@ fileclose(struct xv6fs_file *f)
   if(ff.type == FD_PIPE){
     pipeclose(ff.pipe, ff.writable);
   } else if(ff.type == FD_INODE || ff.type == FD_DEVICE){
-    iput(ff.ip);
+    xv6fs_iput(ff.ip);
   }
 }
 
 // Get metadata about file f.
 // addr is a user virtual address, pointing to a struct stat.
 int
-filestat(struct xv6fs_file *f, uint64 addr)
+xv6fs_filestat(struct xv6fs_file *f, uint64 addr)
 {
   struct proc *p = myproc();
   struct stat st;
   
   if(f->type == FD_INODE || f->type == FD_DEVICE){
-    ilock(f->ip);
-    stati(f->ip, &st);
-    iunlock(f->ip);
+    xv6fs_ilock(f->ip);
+    xv6fs_stati(f->ip, &st);
+    xv6fs_iunlock(f->ip);
     if(copyout(p->pagetable, addr, (char *)&st, sizeof(st)) < 0)
       return -1;
     return 0;
@@ -94,7 +94,7 @@ filestat(struct xv6fs_file *f, uint64 addr)
 // Read from file f.
 // addr is a user virtual address.
 int
-fileread(struct xv6fs_file *f, uint64 addr, int n)
+xv6fs_fileread(struct xv6fs_file *f, uint64 addr, int n)
 {
   int r = 0;
 
@@ -108,10 +108,10 @@ fileread(struct xv6fs_file *f, uint64 addr, int n)
       return -1;
     r = devsw[f->major].read(1, addr, n);
   } else if(f->type == FD_INODE){
-    ilock(f->ip);
-    if((r = readi(f->ip, 1, addr, f->off, n)) > 0)
+    xv6fs_ilock(f->ip);
+    if((r = xv6fs_readi(f->ip, 1, addr, f->off, n)) > 0)
       f->off += r;
-    iunlock(f->ip);
+    xv6fs_iunlock(f->ip);
   } else {
     panic("fileread");
   }
@@ -122,7 +122,7 @@ fileread(struct xv6fs_file *f, uint64 addr, int n)
 // Write to file f.
 // addr is a user virtual address.
 int
-filewrite(struct xv6fs_file *f, uint64 addr, int n)
+xv6fs_filewrite(struct xv6fs_file *f, uint64 addr, int n)
 {
   int r, ret = 0;
 
@@ -149,10 +149,10 @@ filewrite(struct xv6fs_file *f, uint64 addr, int n)
       if(n1 > max)
         n1 = max;
 
-      ilock(f->ip);
-      if ((r = writei(f->ip, 1, addr + i, f->off, n1)) > 0)
+      xv6fs_ilock(f->ip);
+      if ((r = xv6fs_writei(f->ip, 1, addr + i, f->off, n1)) > 0)
         f->off += r;
-      iunlock(f->ip);
+      xv6fs_iunlock(f->ip);
 
       if(r != n1){
         // error from writei

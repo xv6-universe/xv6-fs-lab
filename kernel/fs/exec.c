@@ -32,13 +32,13 @@ exec(char *path, char **argv)
   pagetable_t pagetable = 0, oldpagetable;
   struct proc *p = myproc();
 
-  if((ip = namei(path)) == 0){
+  if((ip = xv6fs_namei(path)) == 0){
     return -1;
   }
-  ilock(ip);
+  xv6fs_ilock(ip);
 
   // Check ELF header
-  if(readi(ip, 0, (uint64)&elf, 0, sizeof(elf)) != sizeof(elf))
+  if(xv6fs_readi(ip, 0, (uint64)&elf, 0, sizeof(elf)) != sizeof(elf))
     goto bad;
 
   if(elf.magic != ELF_MAGIC)
@@ -49,7 +49,7 @@ exec(char *path, char **argv)
 
   // Load program into memory.
   for(i=0, off=elf.phoff; i<elf.phnum; i++, off+=sizeof(ph)){
-    if(readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
+    if(xv6fs_readi(ip, 0, (uint64)&ph, off, sizeof(ph)) != sizeof(ph))
       goto bad;
     if(ph.type != ELF_PROG_LOAD)
       continue;
@@ -66,7 +66,7 @@ exec(char *path, char **argv)
     if(loadseg(pagetable, ph.vaddr, ip, ph.off, ph.filesz) < 0)
       goto bad;
   }
-  iunlockput(ip);
+  xv6fs_iunlockput(ip);
   ip = 0;
 
   p = myproc();
@@ -131,7 +131,7 @@ exec(char *path, char **argv)
   if(pagetable)
     proc_freepagetable(pagetable, sz);
   if(ip){
-    iunlockput(ip);
+    xv6fs_iunlockput(ip);
   }
   return -1;
 }
@@ -154,7 +154,7 @@ loadseg(pagetable_t pagetable, uint64 va, struct xv6fs_inode *ip, uint offset, u
       n = sz - i;
     else
       n = PGSIZE;
-    if(readi(ip, 0, (uint64)pa, offset+i, n) != n)
+    if(xv6fs_readi(ip, 0, (uint64)pa, offset+i, n) != n)
       return -1;
   }
   

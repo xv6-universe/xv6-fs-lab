@@ -61,7 +61,7 @@ sys_dup(void)
     return -1;
   if((fd=fdalloc(f)) < 0)
     return -1;
-  filedup(f);
+  xv6fs_filedup(f);
   return fd;
 }
 
@@ -76,7 +76,7 @@ sys_read(void)
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
-  return fileread(f, p, n);
+  return xv6fs_fileread(f, p, n);
 }
 
 uint64
@@ -91,7 +91,7 @@ sys_write(void)
   if(argfd(0, 0, &f) < 0)
     return -1;
 
-  return filewrite(f, p, n);
+  return xv6fs_filewrite(f, p, n);
 }
 
 uint64
@@ -103,7 +103,7 @@ sys_close(void)
   if(argfd(0, &fd, &f) < 0)
     return -1;
   myproc()->ofile[fd] = 0;
-  fileclose(f);
+  xv6fs_fileclose(f);
   return 0;
 }
 
@@ -116,7 +116,7 @@ sys_fstat(void)
   argaddr(1, &st);
   if(argfd(0, 0, &f) < 0)
     return -1;
-  return filestat(f, st);
+  return xv6fs_filestat(f, st);
 }
 
 // Create the path new as a link to the same inode as old.
@@ -129,37 +129,37 @@ sys_link(void)
   if(argstr(0, old, MAXPATH) < 0 || argstr(1, new, MAXPATH) < 0)
     return -1;
 
-  if((ip = namei(old)) == 0){
+  if((ip = xv6fs_namei(old)) == 0){
     return -1;
   }
 
-  ilock(ip);
+  xv6fs_ilock(ip);
   if(ip->type == T_DIR){
-    iunlockput(ip);
+    xv6fs_iunlockput(ip);
     return -1;
   }
 
   ip->nlink++;
-  iupdate(ip);
-  iunlock(ip);
+  xv6fs_iupdate(ip);
+  xv6fs_iunlock(ip);
 
-  if((dp = nameiparent(new, name)) == 0)
+  if((dp = xv6fs_nameiparent(new, name)) == 0)
     goto bad;
-  ilock(dp);
-  if(dp->dev != ip->dev || dirlink(dp, name, ip->inum) < 0){
-    iunlockput(dp);
+  xv6fs_ilock(dp);
+  if(dp->dev != ip->dev || xv6fs_dirlink(dp, name, ip->inum) < 0){
+    xv6fs_iunlockput(dp);
     goto bad;
   }
-  iunlockput(dp);
-  iput(ip);
+  xv6fs_iunlockput(dp);
+  xv6fs_iput(ip);
 
   return 0;
 
 bad:
-  ilock(ip);
+  xv6fs_ilock(ip);
   ip->nlink--;
-  iupdate(ip);
-  iunlockput(ip);
+  xv6fs_iupdate(ip);
+  xv6fs_iunlockput(ip);
   return -1;
 }
 
@@ -171,7 +171,7 @@ isdirempty(struct xv6fs_inode *dp)
   struct xv6fs_dentry de;
 
   for(off=2*sizeof(de); off<dp->size; off+=sizeof(de)){
-    if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+    if(xv6fs_readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
       panic("isdirempty: readi");
     if(de.inum != 0)
       return 0;
@@ -190,44 +190,44 @@ sys_unlink(void)
   if(argstr(0, path, MAXPATH) < 0)
     return -1;
 
-  if((dp = nameiparent(path, name)) == 0){
+  if((dp = xv6fs_nameiparent(path, name)) == 0){
     return -1;
   }
 
-  ilock(dp);
+  xv6fs_ilock(dp);
 
   // Cannot unlink "." or "..".
-  if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
+  if(xv6fs_namecmp(name, ".") == 0 || xv6fs_namecmp(name, "..") == 0)
     goto bad;
 
-  if((ip = dirlookup(dp, name, &off)) == 0)
+  if((ip = xv6fs_dirlookup(dp, name, &off)) == 0)
     goto bad;
-  ilock(ip);
+  xv6fs_ilock(ip);
 
   if(ip->nlink < 1)
     panic("unlink: nlink < 1");
   if(ip->type == T_DIR && !isdirempty(ip)){
-    iunlockput(ip);
+    xv6fs_iunlockput(ip);
     goto bad;
   }
 
   memset(&de, 0, sizeof(de));
-  if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+  if(xv6fs_writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
     panic("unlink: writei");
   if(ip->type == T_DIR){
     dp->nlink--;
-    iupdate(dp);
+    xv6fs_iupdate(dp);
   }
-  iunlockput(dp);
+  xv6fs_iunlockput(dp);
 
   ip->nlink--;
-  iupdate(ip);
-  iunlockput(ip);
+  xv6fs_iupdate(ip);
+  xv6fs_iunlockput(ip);
 
   return 0;
 
 bad:
-  iunlockput(dp);
+  xv6fs_iunlockput(dp);
   return -1;
 }
 
@@ -237,56 +237,56 @@ create(char *path, short type, short major, short minor)
   struct xv6fs_inode *ip, *dp;
   char name[DIRSIZ];
 
-  if((dp = nameiparent(path, name)) == 0)
+  if((dp = xv6fs_nameiparent(path, name)) == 0)
     return 0;
 
-  ilock(dp);
+  xv6fs_ilock(dp);
 
-  if((ip = dirlookup(dp, name, 0)) != 0){
-    iunlockput(dp);
-    ilock(ip);
+  if((ip = xv6fs_dirlookup(dp, name, 0)) != 0){
+    xv6fs_iunlockput(dp);
+    xv6fs_ilock(ip);
     if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
       return ip;
-    iunlockput(ip);
+    xv6fs_iunlockput(ip);
     return 0;
   }
 
-  if((ip = ialloc(dp->dev, type)) == 0){
-    iunlockput(dp);
+  if((ip = xv6fs_ialloc(dp->dev, type)) == 0){
+    xv6fs_iunlockput(dp);
     return 0;
   }
 
-  ilock(ip);
+  xv6fs_ilock(ip);
   ip->major = major;
   ip->minor = minor;
   ip->nlink = 1;
-  iupdate(ip);
+  xv6fs_iupdate(ip);
 
   if(type == T_DIR){  // Create . and .. entries.
     // No ip->nlink++ for ".": avoid cyclic ref count.
-    if(dirlink(ip, ".", ip->inum) < 0 || dirlink(ip, "..", dp->inum) < 0)
+    if(xv6fs_dirlink(ip, ".", ip->inum) < 0 || xv6fs_dirlink(ip, "..", dp->inum) < 0)
       goto fail;
   }
 
-  if(dirlink(dp, name, ip->inum) < 0)
+  if(xv6fs_dirlink(dp, name, ip->inum) < 0)
     goto fail;
 
   if(type == T_DIR){
     // now that success is guaranteed:
     dp->nlink++;  // for ".."
-    iupdate(dp);
+    xv6fs_iupdate(dp);
   }
 
-  iunlockput(dp);
+  xv6fs_iunlockput(dp);
 
   return ip;
 
  fail:
   // something went wrong. de-allocate ip.
   ip->nlink = 0;
-  iupdate(ip);
-  iunlockput(ip);
-  iunlockput(dp);
+  xv6fs_iupdate(ip);
+  xv6fs_iunlockput(ip);
+  xv6fs_iunlockput(dp);
   return 0;
 }
 
@@ -309,25 +309,25 @@ sys_open(void)
       return -1;
     }
   } else {
-    if((ip = namei(path)) == 0){
+    if((ip = xv6fs_namei(path)) == 0){
       return -1;
     }
-    ilock(ip);
+    xv6fs_ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
-      iunlockput(ip);
+      xv6fs_iunlockput(ip);
       return -1;
     }
   }
 
   if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
-    iunlockput(ip);
+    xv6fs_iunlockput(ip);
     return -1;
   }
 
-  if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
+  if((f = xv6fs_filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
-      fileclose(f);
-    iunlockput(ip);
+      xv6fs_fileclose(f);
+    xv6fs_iunlockput(ip);
     return -1;
   }
 
@@ -343,10 +343,10 @@ sys_open(void)
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
 
   if((omode & O_TRUNC) && ip->type == T_FILE){
-    itrunc(ip);
+    xv6fs_itrunc(ip);
   }
 
-  iunlock(ip);
+  xv6fs_iunlock(ip);
 
   return fd;
 }
@@ -360,7 +360,7 @@ sys_mkdir(void)
   if(argstr(0, path, MAXPATH) < 0 || (ip = create(path, T_DIR, 0, 0)) == 0){
     return -1;
   }
-  iunlockput(ip);
+  xv6fs_iunlockput(ip);
   return 0;
 }
 
@@ -377,7 +377,7 @@ sys_mknod(void)
      (ip = create(path, T_DEVICE, major, minor)) == 0){
     return -1;
   }
-  iunlockput(ip);
+  xv6fs_iunlockput(ip);
   return 0;
 }
 
@@ -388,16 +388,16 @@ sys_chdir(void)
   struct xv6fs_inode *ip;
   struct proc *p = myproc();
   
-  if(argstr(0, path, MAXPATH) < 0 || (ip = namei(path)) == 0){
+  if(argstr(0, path, MAXPATH) < 0 || (ip = xv6fs_namei(path)) == 0){
     return -1;
   }
-  ilock(ip);
+  xv6fs_ilock(ip);
   if(ip->type != T_DIR){
-    iunlockput(ip);
+    xv6fs_iunlockput(ip);
     return -1;
   }
-  iunlock(ip);
-  iput(p->cwd);
+  xv6fs_iunlock(ip);
+  xv6fs_iput(p->cwd);
   p->cwd = ip;
   return 0;
 }
@@ -460,16 +460,16 @@ sys_pipe(void)
   if((fd0 = fdalloc(rf)) < 0 || (fd1 = fdalloc(wf)) < 0){
     if(fd0 >= 0)
       p->ofile[fd0] = 0;
-    fileclose(rf);
-    fileclose(wf);
+    xv6fs_fileclose(rf);
+    xv6fs_fileclose(wf);
     return -1;
   }
   if(copyout(p->pagetable, fdarray, (char*)&fd0, sizeof(fd0)) < 0 ||
      copyout(p->pagetable, fdarray+sizeof(fd0), (char *)&fd1, sizeof(fd1)) < 0){
     p->ofile[fd0] = 0;
     p->ofile[fd1] = 0;
-    fileclose(rf);
-    fileclose(wf);
+    xv6fs_fileclose(rf);
+    xv6fs_fileclose(wf);
     return -1;
   }
   return 0;

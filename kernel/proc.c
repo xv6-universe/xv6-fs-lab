@@ -248,7 +248,7 @@ userinit(void)
   p->trapframe->sp = PGSIZE;  // user stack pointer
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
-  p->cwd = namei("/");
+  p->cwd = xv6fs_namei("/");
 
   p->state = RUNNABLE;
 
@@ -306,8 +306,8 @@ fork(void)
   // increment reference counts on open file descriptors.
   for(i = 0; i < NOFILE; i++)
     if(p->ofile[i])
-      np->ofile[i] = filedup(p->ofile[i]);
-  np->cwd = idup(p->cwd);
+      np->ofile[i] = xv6fs_filedup(p->ofile[i]);
+  np->cwd = xv6fs_idup(p->cwd);
 
   safestrcpy(np->name, p->name, sizeof(p->name));
 
@@ -356,12 +356,12 @@ exit(int status)
   for(int fd = 0; fd < NOFILE; fd++){
     if(p->ofile[fd]){
       struct xv6fs_file *f = p->ofile[fd];
-      fileclose(f);
+      xv6fs_fileclose(f);
       p->ofile[fd] = 0;
     }
   }
 
-  iput(p->cwd);
+  xv6fs_iput(p->cwd);
   p->cwd = 0;
 
   acquire(&wait_lock);
@@ -523,7 +523,7 @@ forkret(void)
     // regular process (e.g., because it calls sleep), and thus cannot
     // be run from main().
     first = 0;
-    fsinit(ROOTDEV);
+    xv6fs_fsinit(ROOTDEV);
   }
 
   usertrapret();

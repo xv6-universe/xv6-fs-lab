@@ -26,8 +26,8 @@ main()
     plicinit();      // set up interrupt controller
     plicinithart();  // ask PLIC for device interrupts
     binit();         // buffer cache
-    iinit();         // inode table
-    fileinit();      // file table
+    xv6fs_iinit();         // inode table
+    xv6fs_fileinit();      // file table
     virtio_disk_init(); // emulated hard disk
     userinit();      // first user process
     __sync_synchronize();
