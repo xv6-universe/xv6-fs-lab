@@ -19,3 +19,4 @@ user/usys.S
 compile_commands.*
 .vscode
 .cache
+.shadow
