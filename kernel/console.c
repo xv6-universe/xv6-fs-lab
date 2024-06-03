@@ -20,9 +20,12 @@
 #include "riscv.h"
 #include "defs.h"
 #include "proc.h"
+#include "fs/file.h"
 
 #define BACKSPACE 0x100
 #define C(x)  ((x)-'@')  // Control-x
+
+extern struct devsw devsw[];
 
 //
 // send one character to the uart.

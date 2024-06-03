@@ -113,10 +113,10 @@ struct filesystem_operations {
   // If dst_is_user==1, then dst is a user virtual address;
   // otherwise, dst is a kernel address.
   // Linux: file_operations->read
-  int (*read) (struct inode *ino, char dst_is_user, uint64 dst, uint off, uint n);
+  int (*read) (struct inode *ino, int dst_is_user, uint64 dst, uint off, uint n);
   // Writes to the file.
   // Linux: file_operations->write
-  int (*write) (struct inode *ino, char src_is_user, uint64 src, uint off, uint n);
+  int (*write) (struct inode *ino, int src_is_user, uint64 src, uint off, uint n);
   // Creates a new file.
   // target is a newly created dentry; target->inode is the actual file.
   // Linux: inode_operations->create
@@ -140,13 +140,6 @@ struct filesystem_operations {
   // initialize filesystem type
   // Linux: (none)
   void (*init) (void);
+  // get inode
+  struct inode *(*geti) (uint dev, uint inum, int inc_ref);
 };
-
-// map major device number to device functions.
-struct devsw {
-  int (*read)(int, uint64, int);
-  int (*write)(int, uint64, int);
-};
-
-extern struct super_block *root;
-extern struct devsw devsw[];

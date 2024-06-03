@@ -41,6 +41,6 @@ struct devsw {
   int (*write)(int, uint64, int);
 };
 
-extern struct devsw devsw[];
+extern struct super_block *root;
 
 #define CONSOLE 1

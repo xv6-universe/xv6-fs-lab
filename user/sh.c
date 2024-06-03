@@ -137,6 +137,7 @@ getcmd(char *buf, int nbuf)
   write(2, "$ ", 2);
   memset(buf, 0, nbuf);
   gets(buf, nbuf);
+  printf("buf: %s\n", buf);
   if(buf[0] == 0) // EOF
     return -1;
   return 0;
@@ -158,6 +159,7 @@ main(void)
 
   // Read and run input commands.
   while(getcmd(buf, sizeof(buf)) >= 0){
+    printf("command: %s\n", buf);
     if(buf[0] == 'c' && buf[1] == 'd' && buf[2] == ' '){
       // Chdir must be called by the parent, not the child.
       buf[strlen(buf)-1] = 0;  // chop \n

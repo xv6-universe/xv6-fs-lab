@@ -20,3 +20,11 @@ compile_commands.*
 .vscode
 .cache
 .shadow
+.idea
+*.txt
+a1
+epc
+pagetable
+sp
+sz
+trapframe-

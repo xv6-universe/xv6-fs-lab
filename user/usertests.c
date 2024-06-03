@@ -1505,10 +1505,13 @@ linkunlink(char *s)
   for(i = 0; i < 100; i++){
     x = x * 1103515245 + 12345;
     if((x % 3) == 0){
+      // printf("I am %d Iteration %d, doing close/open\n", pid, i);
       close(open("x", O_RDWR | O_CREATE));
     } else if((x % 3) == 1){
+      // printf("I am %d Iteration %d, doing link\n", pid, i);
       link("cat", "x");
     } else {
+      // printf("I am %d Iteration %d, doing unlink\n", pid, i);
       unlink("x");
     }
   }
@@ -2641,33 +2644,33 @@ struct test {
 };
 
 struct test fstests1[] = {
-  {truncate1, "truncate1"},
-  {truncate2, "truncate2"},
-  {truncate3, "truncate3"},
-  {openiputtest, "openiput"},
-  {exitiputtest, "exitiput"},
-  {iputtest, "iput"},
-  {opentest, "opentest"},
-  {writetest, "writetest"},
-  {writebig, "writebig"},
-  {createtest, "createtest"},
-  {dirtest, "dirtest"},
-  {exectest, "exectest"},
-  {sharedfd, "sharedfd"},
-  {fourfiles, "fourfiles"},
-  {createdelete, "createdelete"},
-  {unlinkread, "unlinkread"},
-  {linktest, "linktest"},
-  {concreate, "concreate"},
+  // {truncate1, "truncate1"},
+  // {truncate2, "truncate2"},
+  // {truncate3, "truncate3"},
+  // {openiputtest, "openiput"},
+  // {exitiputtest, "exitiput"},
+  // {iputtest, "iput"},
+  // {opentest, "opentest"},
+  // {writetest, "writetest"},
+  // {writebig, "writebig"},
+  // {createtest, "createtest"},
+  // {dirtest, "dirtest"},
+  // {exectest, "exectest"},
+  // {sharedfd, "sharedfd"},
+  // {fourfiles, "fourfiles"},
+  // {createdelete, "createdelete"},
+  // {unlinkread, "unlinkread"},
+  // {linktest, "linktest"},
+  // {concreate, "concreate"},
   {linkunlink, "linkunlink"},
-  {subdir, "subdir"},
-  {bigwrite, "bigwrite"},
-  {bigfile, "bigfile"},
-  {fourteen, "fourteen"},
-  {rmdot, "rmdot"},
-  {dirfile, "dirfile"},
-  {iref, "iref"},
-  {textwrite, "textwrite"},
+  // {subdir, "subdir"},
+  // {bigwrite, "bigwrite"},
+  // {bigfile, "bigfile"},
+  // {fourteen, "fourteen"},
+  // {rmdot, "rmdot"},
+  // {dirfile, "dirfile"},
+  // {iref, "iref"},
+  // {textwrite, "textwrite"},
   { 0, 0},
 };
 

@@ -8,6 +8,8 @@
 #include "sleeplock.h"
 #include "xv6fs/file.h"
 #include "xv6fs/defs.h"
+#include "vfs.h"
+#include "../defs.h"
 
 #define PIPESIZE 512
 
@@ -21,13 +23,13 @@ struct pipe {
 };
 
 int
-pipealloc(struct xv6fs_file **f0, struct xv6fs_file **f1)
+pipealloc(struct file **f0, struct file **f1)
 {
   struct pipe *pi;
 
   pi = 0;
   *f0 = *f1 = 0;
-  if((*f0 = xv6fs_filealloc()) == 0 || (*f1 = xv6fs_filealloc()) == 0)
+  if((*f0 = filealloc()) == 0 || (*f1 = filealloc()) == 0)
     goto bad;
   if((pi = (struct pipe*)kalloc()) == 0)
     goto bad;
@@ -36,23 +38,23 @@ pipealloc(struct xv6fs_file **f0, struct xv6fs_file **f1)
   pi->nwrite = 0;
   pi->nread = 0;
   initlock(&pi->lock, "pipe");
-  (*f0)->type = FD_PIPE;
+  (*f0)->inode->type = FD_PIPE;
   (*f0)->readable = 1;
   (*f0)->writable = 0;
-  (*f0)->pipe = pi;
-  (*f1)->type = FD_PIPE;
+  (*f0)->private = pi; // note: we use private to point to pipe
+  (*f1)->inode->type = FD_PIPE;
   (*f1)->readable = 0;
   (*f1)->writable = 1;
-  (*f1)->pipe = pi;
+  (*f1)->private = pi;
   return 0;
 
  bad:
   if(pi)
     kfree((char*)pi);
   if(*f0)
-    xv6fs_fileclose(*f0);
+    fileclose(*f0);
   if(*f1)
-    xv6fs_fileclose(*f1);
+    fileclose(*f1);
   return -1;
 }
 

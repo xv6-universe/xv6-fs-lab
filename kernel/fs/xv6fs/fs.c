@@ -21,11 +21,36 @@
 #include "fs.h"
 #include "buf.h"
 #include "file.h"
+#include "../vfs.h"
+#include "../defs.h"
+#include "xv6_fcntl.h"
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 // there should be one superblock per disk device, but we run with
 // only one device
 struct xv6fs_super_block sb; 
+struct filesystem_type xv6fs;
+static struct filesystem_operations xv6fs_ops;
+struct inode *xv6fs_geti(uint dev, uint inum, int inc_ref);
+
+struct super_block *xv6fs_mount(const char *source) {
+  struct super_block *root_block = kalloc();
+  memset(root_block, 0, sizeof(*root_block));
+  root_block->type = &xv6fs;
+  root_block->root = xv6fs_geti(ROOTDEV, ROOTINO, 1);
+  root_block->parent = 0;
+  root_block->mountpoint = 0;
+  root_block->op = &xv6fs_ops;
+  root_block->root->op = &xv6fs_ops;
+  // printf("root op: %p\n", root_block->op);
+  root->private = &sb;
+  return root_block;
+}
+
+int xv6fs_umount(struct super_block *sb) {
+  // ignored at this stage
+  return 0;
+}
 
 // Read the super block.
 static void
@@ -40,8 +65,8 @@ readsb(int dev, struct xv6fs_super_block *sb)
 
 // Init fs
 void
-xv6fs_fsinit(int dev) {
-  readsb(dev, &sb);
+xv6fs_fsinit() {
+  readsb(ROOTDEV, &sb);
   if(sb.magic != FSMAGIC)
     panic("invalid file system");
 }
@@ -132,7 +157,7 @@ bfree(int dev, uint b)
 // * Referencing in table: an entry in the inode table
 //   is free if ip->ref is zero. Otherwise ip->ref tracks
 //   the number of in-memory pointers to the entry (open
-//   files and current directories). iget() finds or
+//   files and current directories). xv6fs_geti() finds or
 //   creates a table entry and increments its ref; iput()
 //   decrements ref.
 //
@@ -147,17 +172,17 @@ bfree(int dev, uint b)
 //   has first locked the inode.
 //
 // Thus a typical sequence is:
-//   ip = iget(dev, inum)
+//   ip = xv6fs_geti(dev, inum)
 //   ilock(ip)
 //   ... examine and modify ip->xxx ...
 //   iunlock(ip)
 //   iput(ip)
 //
-// ilock() is separate from iget() so that system calls can
+// ilock() is separate from xv6fs_geti() so that system calls can
 // get a long-term reference to an inode (as for an open file)
 // and only lock it for short periods (e.g., in read()).
 // The separation also helps avoid deadlock and races during
-// pathname lookup. iget() increments ip->ref so that the inode
+// pathname lookup. xv6fs_geti() increments ip->ref so that the inode
 // stays in the table and pointers to it remain valid.
 //
 // Many internal file system functions expect the caller to
@@ -173,42 +198,41 @@ bfree(int dev, uint b)
 // dev, and inum.  One must hold ip->lock in order to
 // read or write that inode's ip->valid, ip->size, ip->type, &c.
 
-struct {
-  struct xv6fs_inode inode[NINODE];
-} itable;
-
-void
-xv6fs_iinit()
-{
-  int i = 0;
-  
-  for(i = 0; i < NINODE; i++) {
-    initsleeplock(&itable.inode[i].lock, "inode");
-  }
-}
-
-static struct xv6fs_inode* iget(uint dev, uint inum);
 
 // Allocate an inode on device dev.
 // Mark it as allocated by  giving it type type.
 // Returns an unlocked but allocated and referenced inode,
 // or NULL if there is no free inode.
-struct xv6fs_inode*
-xv6fs_ialloc(uint dev, short type)
+struct inode*
+xv6fs_ialloc(struct super_block *root)
 {
   int inum;
   struct buf *bp;
   struct dinode *dip;
+  struct inode *ip;
+  struct xv6fs_inode *xv6fs_ip;
 
   for(inum = 1; inum < sb.ninodes; inum++){
-    bp = bread(dev, IBLOCK(inum, sb));
+    bp = bread(ROOTDEV, IBLOCK(inum, sb));
     dip = (struct dinode*)bp->data + inum%IPB;
     if(dip->type == 0){  // a free inode
       memset(dip, 0, sizeof(*dip));
-      dip->type = type;
+      dip->type = 3; // any problem?
       bwrite(bp);   // mark it allocated on the disk
       brelse(bp);
-      return iget(dev, inum);
+      ip = xv6fs_geti(ROOTDEV, inum, 1);
+      // same to root, as in xv6 file system
+      ip->op = root->op;
+      // printf("ialloc: ip->op = %p\n", ip->op);
+      ip->sb = root;
+      // ip->nlink = dip->nlink; ??????
+      if (ip->private == 0) { // do we really need it
+        xv6fs_ip = kalloc();
+        memset(xv6fs_ip, 0, sizeof(*xv6fs_ip)); // kalloc returns shit
+        ip->private = xv6fs_ip;
+      }
+
+      return ip;
     }
     brelse(bp);
   }
@@ -221,138 +245,127 @@ xv6fs_ialloc(uint dev, short type)
 // that lives on disk.
 // Caller must hold ip->lock.
 void
-xv6fs_iupdate(struct xv6fs_inode *ip)
+xv6fs_iupdate(struct inode *inode)
 {
   struct buf *bp;
   struct dinode *dip;
+  struct xv6fs_inode *ip = inode->private;
 
-  bp = bread(ip->dev, IBLOCK(ip->inum, sb));
-  dip = (struct dinode*)bp->data + ip->inum%IPB;
-  dip->type = ip->type;
+  bp = bread(inode->dev, IBLOCK(inode->inum, sb));
+  dip = (struct dinode*)bp->data + inode->inum%IPB;
+  dip->type = inode->type;
+  #ifdef REF
+    printf("dip: %p\n", dip);
+    printf("^iupdate! ino: %d has type %d\n", inode->inum, inode->type);
+    printf("^iupdate! ino: %d has nlink %d\n", inode->inum, inode->nlink);
+    printf("^iupdate! ino: %d has address %p\n", inode->inum, ip->addrs);
+    printf("^iupdate! ino: %d has size: %d\n", inode->inum, inode->size);
+  #endif
   dip->major = ip->major;
   dip->minor = ip->minor;
-  dip->nlink = ip->nlink;
-  dip->size = ip->size;
+  dip->nlink = inode->nlink;
+  dip->size = inode->size;
   memmove(dip->addrs, ip->addrs, sizeof(ip->addrs));
   bwrite(bp);
   brelse(bp);
 }
 
-// Find the inode with number inum on device dev
-// and return the in-memory copy. Does not lock
-// the inode and does not read it from disk.
-static struct xv6fs_inode*
-iget(uint dev, uint inum)
-{
-  struct xv6fs_inode *ip, *empty;
-
-  // Is the inode already in the table?
-  empty = 0;
-  for(ip = &itable.inode[0]; ip < &itable.inode[NINODE]; ip++){
-    if(ip->ref > 0 && ip->dev == dev && ip->inum == inum){
-      ip->ref++;
-      return ip;
-    }
-    if(empty == 0 && ip->ref == 0)    // Remember empty slot.
-      empty = ip;
-  }
-
-  // Recycle an inode entry.
-  if(empty == 0)
-    panic("iget: no inodes");
-
-  ip = empty;
-  ip->dev = dev;
-  ip->inum = inum;
-  ip->ref = 1;
-  ip->valid = 0;
-
-  return ip;
-}
-
-// Increment reference count for ip.
-// Returns ip to enable ip = idup(ip1) idiom.
-struct xv6fs_inode*
-xv6fs_idup(struct xv6fs_inode *ip)
-{
-  ip->ref++;
-  return ip;
-}
-
-// Lock the given inode.
-// Reads the inode from disk if necessary.
-void
-xv6fs_ilock(struct xv6fs_inode *ip)
-{
-  struct buf *bp;
-  struct dinode *dip;
-
-  if(ip == 0 || ip->ref < 1)
-    panic("ilock");
-
-  acquiresleep(&ip->lock);
-
-  if(ip->valid == 0){
-    bp = bread(ip->dev, IBLOCK(ip->inum, sb));
-    dip = (struct dinode*)bp->data + ip->inum%IPB;
-    ip->type = dip->type;
-    ip->major = dip->major;
-    ip->minor = dip->minor;
-    ip->nlink = dip->nlink;
-    ip->size = dip->size;
-    memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
-    brelse(bp);
-    ip->valid = 1;
-    if(ip->type == 0)
-      panic("ilock: no type");
+// release inode in the memory
+void xv6fs_release_inode(struct inode *ino) {
+  #ifdef LINK
+    printf("release inode %d\n", ino->inum);
+  #endif
+  if (ino->private != 0) {
+    kfree(ino->private);
+    ino->private = 0;
+    ino->type = 0;
   }
 }
 
-// Unlock the given inode.
-void
-xv6fs_iunlock(struct xv6fs_inode *ip)
-{
-  if(ip == 0 || !holdingsleep(&ip->lock) || ip->ref < 1)
-    panic("iunlock");
-
-  releasesleep(&ip->lock);
+// free the inode in both the memory and the disk
+void xv6fs_free_inode(struct inode *ino) {
+  #ifdef LINK
+    printf("free inode %d\n", ino->inum);
+  #endif
+  if (ino->private != 0) {
+    kfree(ino->private);
+    ino->private = 0;
+    ino->type = 0;
+  }
 }
 
-// Drop a reference to an in-memory inode.
-// If that was the last reference, the inode table entry can
-// be recycled.
-// If that was the last reference and the inode has no links
-// to it, free the inode (and its content) on disk.
-// All calls to iput() must be inside a transaction in
-// case it has to free the inode.
-void
-xv6fs_iput(struct xv6fs_inode *ip)
-{
-  if(ip->ref == 1 && ip->valid && ip->nlink == 0){
-    // inode has no links and no other references: truncate and free.
-
-    // ip->ref == 1 means no other process can have ip locked,
-    // so this acquiresleep() won't block (or deadlock).
-    acquiresleep(&ip->lock);
-
-    xv6fs_itrunc(ip);
-    ip->type = 0;
-    xv6fs_iupdate(ip);
-    ip->valid = 0;
-
-    releasesleep(&ip->lock);
+// open a file
+struct file *xv6fs_open(struct inode *ino, uint mode) {
+  // printf("entering xv6fs_open()\n");
+  struct xv6fs_inode *ip = ino->private;
+  struct file *f;
+  struct xv6fs_inode *xv6fs_f = 0;
+  if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
+    return 0;
   }
 
-  ip->ref--;
+  if((f = filealloc()) == 0) {
+    return 0;
+  }
+
+  xv6fs_f = kalloc();
+  memset(xv6fs_f, 0, sizeof(*xv6fs_f));
+
+  if(ip->type == T_DEVICE){
+    xv6fs_f->type = FD_DEVICE;
+    xv6fs_f->major = ip->major;
+  } else {
+    xv6fs_f->type = FD_INODE;
+    f->off = 0;
+  }
+  f->inode = ino;
+  f->private = xv6fs_f;
+  f->readable = !(mode & O_WRONLY);
+  f->writable = (mode & O_WRONLY) || (mode & O_RDWR);
+  // printf("leaving xv6fs_open()\n");
+  return f;
 }
 
-// Common idiom: unlock, then put.
-void
-xv6fs_iunlockput(struct xv6fs_inode *ip)
-{
-  xv6fs_iunlock(ip);
-  xv6fs_iput(ip);
+// close a file
+void xv6fs_close(struct file *f) {
+  if(f->ref < 1)
+    panic("fileclose");
+  if(--f->ref > 0){
+    return;
+  }
+  
+  f->ref = 0;
+
+  if(f->private != 0 && f->inode == 0) { // this is a pipe
+    struct pipe *pp = f->private;
+    pipeclose(pp, f->writable);
+  } else {
+    iput(f->inode);
+    kfree(f->private);
+  }
+
 }
+
+// is this directory empty?
+int xv6fs_isdirempty(struct inode *dir) {
+  int off;
+  struct xv6fs_dentry de;
+
+  for(off=2*sizeof(de); off < dir->size; off+=sizeof(de)){
+    if(xv6fs_readi(dir, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+      panic("isdirempty: readi");
+    if(de.inum != 0)
+      return 0;
+  }
+  return 1;
+
+}
+
+// release the dentry
+void xv6fs_release_dentry(struct dentry *dentry) {
+  // do nothing at this stage
+}
+
 
 // Inode content
 //
@@ -408,67 +421,64 @@ bmap(struct xv6fs_inode *ip, uint bn)
 // Truncate inode (discard contents).
 // Caller must hold ip->lock.
 void
-xv6fs_itrunc(struct xv6fs_inode *ip)
+xv6fs_itrunc(struct inode *ino)
 {
+  #ifdef REF
+    printf("inode %d is truncated\n", ino->inum);
+    printf("inode device number: %d\n", ino->dev);
+  #endif
+  struct xv6fs_inode *ip = ino->private;
   int i, j;
   struct buf *bp;
   uint *a;
 
   for(i = 0; i < NDIRECT; i++){
     if(ip->addrs[i]){
-      bfree(ip->dev, ip->addrs[i]);
+      bfree(ino->dev, ip->addrs[i]);
       ip->addrs[i] = 0;
     }
   }
 
   if(ip->addrs[NDIRECT]){
-    bp = bread(ip->dev, ip->addrs[NDIRECT]);
+    bp = bread(ino->dev, ip->addrs[NDIRECT]);
     a = (uint*)bp->data;
     for(j = 0; j < NINDIRECT; j++){
       if(a[j])
-        bfree(ip->dev, a[j]);
+        bfree(ino->dev, a[j]);
     }
     brelse(bp);
-    bfree(ip->dev, ip->addrs[NDIRECT]);
+    bfree(ino->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
   }
 
-  ip->size = 0;
-  xv6fs_iupdate(ip);
+  ino->size = 0;
+  xv6fs_iupdate(ino);
 }
 
-// Copy stat information from inode.
-// Caller must hold ip->lock.
-void
-xv6fs_stati(struct xv6fs_inode *ip, struct stat *st)
-{
-  st->dev = ip->dev;
-  st->ino = ip->inum;
-  st->type = ip->type;
-  st->nlink = ip->nlink;
-  st->size = ip->size;
-}
+
 
 // Read data from inode.
 // Caller must hold ip->lock.
 // If user_dst==1, then dst is a user virtual address;
 // otherwise, dst is a kernel address.
 int
-xv6fs_readi(struct xv6fs_inode *ip, int user_dst, uint64 dst, uint off, uint n)
+xv6fs_readi(struct inode *ino, int user_dst, uint64 dst, uint off, uint n)
 {
   uint tot, m;
   struct buf *bp;
 
-  if(off > ip->size || off + n < off)
+  if(off > ino->size || off + n < off) {
+    printf("fuck yourself\n");
     return 0;
-  if(off + n > ip->size)
-    n = ip->size - off;
+  }
+  if(off + n > ino->size)
+    n = ino->size - off;
 
   for(tot=0; tot<n; tot+=m, off+=m, dst+=m){
-    uint addr = bmap(ip, off/BSIZE);
+    uint addr = bmap(ino->private, off/BSIZE);
     if(addr == 0)
       break;
-    bp = bread(ip->dev, addr);
+    bp = bread(ino->dev, addr);
     m = min(n - tot, BSIZE - off%BSIZE);
     if(either_copyout(user_dst, dst, bp->data + (off % BSIZE), m) == -1) {
       brelse(bp);
@@ -488,21 +498,21 @@ xv6fs_readi(struct xv6fs_inode *ip, int user_dst, uint64 dst, uint off, uint n)
 // If the return value is less than the requested n,
 // there was an error of some kind.
 int
-xv6fs_writei(struct xv6fs_inode *ip, int user_src, uint64 src, uint off, uint n)
+xv6fs_writei(struct inode *ino, int user_src, uint64 src, uint off, uint n)
 {
   uint tot, m;
   struct buf *bp;
 
-  if(off > ip->size || off + n < off)
+  if(off > ino->size || off + n < off)
     return -1;
   if(off + n > MAXFILE*BSIZE)
     return -1;
 
   for(tot=0; tot<n; tot+=m, off+=m, src+=m){
-    uint addr = bmap(ip, off/BSIZE);
+    uint addr = bmap(ino->private, off/BSIZE);
     if(addr == 0)
       break;
-    bp = bread(ip->dev, addr);
+    bp = bread(ino->dev, addr);
     m = min(n - tot, BSIZE - off%BSIZE);
     if(either_copyin(bp->data + (off % BSIZE), user_src, src, m) == -1) {
       brelse(bp);
@@ -512,13 +522,13 @@ xv6fs_writei(struct xv6fs_inode *ip, int user_src, uint64 src, uint off, uint n)
     brelse(bp);
   }
 
-  if(off > ip->size)
-    ip->size = off;
+  if(off > ino->size)
+    ino->size = off;
 
   // write the i-node back to disk even if the size didn't change
   // because the loop above might have called bmap() and added a new
   // block to ip->addrs[].
-  xv6fs_iupdate(ip);
+  xv6fs_iupdate(ino);
 
   return tot;
 }
@@ -533,150 +543,208 @@ xv6fs_namecmp(const char *s, const char *t)
 
 // Look for a directory entry in a directory.
 // If found, set *poff to byte offset of entry.
-struct xv6fs_inode*
-xv6fs_dirlookup(struct xv6fs_inode *dp, char *name, uint *poff)
+struct dentry*
+xv6fs_dirlookup(struct inode *dp, const char *name)
 {
-  uint off, inum;
+  #ifdef LINK
+    printf("entering dirlookup\n");
+    printf("looking for %s\n", name);
+  #endif
+  uint off;
   struct xv6fs_dentry de;
-
   if(dp->type != T_DIR)
     panic("dirlookup not DIR");
 
   for(off = 0; off < dp->size; off += sizeof(de)){
+    // printf("dirlookup: off = %d\n", off);
     if(xv6fs_readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
       panic("dirlookup read");
-    if(de.inum == 0)
+    #ifdef LINK
+    printf("dirlookup: name = %s\n", de.name);
+    #endif
+    if(de.inum == 0) {
+      // printf("dirlookup: de.inum == 0\n");
       continue;
+    }
     if(xv6fs_namecmp(name, de.name) == 0){
       // entry matches path element
-      if(poff)
-        *poff = off;
-      inum = de.inum;
-      return iget(dp->dev, inum);
+      struct dentry *dentry = kalloc();
+      struct inode *ino = xv6fs_geti(dp->dev, de.inum, 1);
+      ino->op = dp->op;
+      // printf("dirlookup: ino->op = %p\n", ino->op);
+      dentry->op = dp->op;
+      dentry->inode = ino;
+      dentry->parent = dp;
+      strncpy(dentry->name, name, DIRSIZ);
+      #ifdef REF
+        printf("dirlookup: I've found\n");
+      #endif
+      return dentry;
     }
   }
+
+  #ifdef REF
+    printf("dirlookup: not found\n");
+  #endif
 
   return 0;
 }
 
-// Write a new directory entry (name, inum) into the directory dp.
-// Returns 0 on success, -1 on failure (e.g. out of disk blocks).
-int
-xv6fs_dirlink(struct xv6fs_inode *dp, char *name, uint inum)
-{
-  int off;
+int xv6fs_link(struct dentry *target) {
+  int off = 0;
   struct xv6fs_dentry de;
-  struct xv6fs_inode *ip;
-
-  // Check that name is not present.
-  if((ip = xv6fs_dirlookup(dp, name, 0)) != 0){
-    xv6fs_iput(ip);
+  struct inode *dp = target->parent;
+  struct inode *son = target->inode;
+  struct inode *ino = 0;
+  char name[DIRSIZ];
+  strncpy(name, target->name, DIRSIZ);
+  #ifdef LINK
+    printf("link: parent inode: %d\n", dp->inum);
+    printf("link: son inode: %d\n", son->inum);
+  #endif
+  struct dentry *dd = xv6fs_dirlookup(dp, name);
+  #ifdef LINK
+    printf("link: dd = %p\n", dd->name);
+  #endif
+  if (dd != 0 && (ino = dd->inode) != 0) {
+    iput(ino);
+    printf("link: file exists\n");
     return -1;
   }
 
-  // Look for an empty dentry.
-  for(off = 0; off < dp->size; off += sizeof(de)){
-    if(xv6fs_readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+  #ifdef LINK
+    printf("link: file does not exist\n");
+  #endif
+
+  // look for an empty dentry
+  for (off = 0; off < dp->size; off += sizeof(de)) {
+    if (xv6fs_readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de)) {
       panic("dirlink read");
-    if(de.inum == 0)
+    }
+    if (de.inum == 0) {
       break;
+    }
   }
 
   strncpy(de.name, name, DIRSIZ);
-  de.inum = inum;
-  if(xv6fs_writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+  de.inum = son->inum;
+  if (xv6fs_writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de)) {
     return -1;
+  }
+
+  #ifdef LINK
+    printf("link: link success\n");
+  #endif
 
   return 0;
 }
 
-// Paths
-
-// Copy the next path element from path into name.
-// Return a pointer to the element following the copied one.
-// The returned path has no leading slashes,
-// so the caller can check *path=='\0' to see if the name is the last one.
-// If no name to remove, return 0.
-//
-// Examples:
-//   skipelem("a/bb/c", name) = "bb/c", setting name = "a"
-//   skipelem("///a//bb", name) = "bb", setting name = "a"
-//   skipelem("a", name) = "", setting name = "a"
-//   skipelem("", name) = skipelem("////", name) = 0
-//
-static char*
-skipelem(char *path, char *name)
-{
-  char *s;
-  int len;
-
-  while(*path == '/')
-    path++;
-  if(*path == 0)
-    return 0;
-  s = path;
-  while(*path != '/' && *path != 0)
-    path++;
-  len = path - s;
-  if(len >= DIRSIZ)
-    memmove(name, s, DIRSIZ);
-  else {
-    memmove(name, s, len);
-    name[len] = 0;
-  }
-  while(*path == '/')
-    path++;
-  return path;
-}
-
-// Look up and return the inode for a path name.
-// If parent != 0, return the inode for the parent and copy the final
-// path element into name, which must have room for DIRSIZ bytes.
-// Must be called inside a transaction since it calls iput().
-static struct xv6fs_inode*
-namex(char *path, int nameiparent, char *name)
-{
-  struct xv6fs_inode *ip, *next;
-
-  if(*path == '/')
-    ip = iget(ROOTDEV, ROOTINO);
-  else
-    ip = xv6fs_idup(myproc()->cwd);
-
-  while((path = skipelem(path, name)) != 0){
-    xv6fs_ilock(ip);
-    if(ip->type != T_DIR){
-      xv6fs_iunlockput(ip);
-      return 0;
-    }
-    if(nameiparent && *path == '\0'){
-      // Stop one level early.
-      xv6fs_iunlock(ip);
-      return ip;
-    }
-    if((next = xv6fs_dirlookup(ip, name, 0)) == 0){
-      xv6fs_iunlockput(ip);
-      return 0;
-    }
-    xv6fs_iunlockput(ip);
-    ip = next;
-  }
-  if(nameiparent){
-    xv6fs_iput(ip);
-    return 0;
-  }
-  return ip;
-}
-
-struct xv6fs_inode*
-xv6fs_namei(char *path)
-{
+int xv6fs_unlink(struct dentry *d) {
+  // now that dirlookup can't change off, we have to do it manually
+  struct xv6fs_dentry de;
+  struct inode *dp = d->parent;
+  #ifdef REF
+    printf("unlink: parent inode: %d\n", dp->inum);
+  #endif
   char name[DIRSIZ];
-  return namex(path, 0, name);
+  strncpy(name, d->name, DIRSIZ);
+  uint off = 0;
+  for (off = 0; off < dp->size; off += sizeof(de)) {
+    if (xv6fs_readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de)) {
+      panic("dirlink read in unlink");
+      return -1;
+    }
+    #ifdef REF
+      printf("name: %s\n", de.name);
+    #endif
+    if (xv6fs_namecmp(name, de.name) == 0) {
+      // panic("x");
+      memset(&de, 0, sizeof(de));
+      if (xv6fs_writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de)) {
+        panic("unlink write");
+        return -1;
+      }
+    }
+  }
+
+  return 0;
 }
 
-struct xv6fs_inode*
-xv6fs_nameiparent(char *path, char *name)
-{
-  return namex(path, 1, name);
+
+// create a file
+int xv6fs_create(struct inode *dir, struct dentry *target, short type, short major, short minor) {
+  struct inode *ino = target->inode;
+  struct xv6fs_inode *ip = ino->private;
+  ip->major = major;
+  ip->minor = minor;
+  return 0;
 }
+
+// get inode
+struct inode *xv6fs_geti(uint dev, uint inum, int inc_ref) {
+  // printf("entering xv6fs_geti\n");
+  struct inode *ino = iget(dev, inum);
+  if (!inc_ref) {
+    ino->ref--;
+  }
+  #ifdef LINK
+    printf("geti: ref cnt for ino %d: %d\n", inum, ino->ref);
+  #endif
+  // printf("xv6fs_geti: ino->private = %p\n", ino->private);
+  if (ino->private == 0) { // first time, read from disk
+    struct xv6fs_inode *ip = kalloc();
+    memset(ip, 0, sizeof(*ip));
+    ino->private = ip;
+    struct buf *bp = bread(dev, IBLOCK(inum, sb));
+    struct dinode *dip = (struct dinode*)bp->data + inum%IPB;
+    ip->type = dip->type;
+    ip->major = dip->major;
+    ip->minor = dip->minor;
+    ip->nlink = dip->nlink;
+    ip->size = dip->size;
+    ip->dev = dev;
+    ino->type = ip->type;
+    ino->nlink = dip->nlink;
+    ino->size = dip->size;
+    ino->dev = dev;
+    ino->ref = 1;
+    memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
+    #ifdef REF
+      printf("dip: %p\n", dip);
+      printf("geti: ino: %d has type %d\n", inum, ino->type);
+      printf("geti: ino: %d has nlink %d\n", inum, ino->nlink);
+      printf("geti: ino: %d has address %p\n", inum, ip->addrs);
+    #endif
+    brelse(bp);
+  }
+
+  return ino;
+}
+
+static struct filesystem_operations xv6fs_ops = {
+  .mount = xv6fs_mount,
+  .umount = xv6fs_umount,
+  .alloc_inode = xv6fs_ialloc,
+  .write_inode = xv6fs_iupdate,
+  .release_inode = xv6fs_release_inode,
+  .free_inode = xv6fs_free_inode,
+  .trunc = xv6fs_itrunc,
+  .open = xv6fs_open,
+  .close = xv6fs_close,
+  .read = xv6fs_readi,
+  .write = xv6fs_writei,
+  .create = xv6fs_create,
+  .link = xv6fs_link,
+  .unlink = xv6fs_unlink,
+  .dirlookup = xv6fs_dirlookup,
+  .release_dentry = xv6fs_release_dentry,
+  .isdirempty = xv6fs_isdirempty,
+  .init = xv6fs_fsinit,
+  .geti = xv6fs_geti,
+};
+
+
+struct filesystem_type xv6fs = {
+  .type = "xv6fs",
+  .op = &xv6fs_ops,
+};

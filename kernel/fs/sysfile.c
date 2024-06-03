@@ -1,28 +1,28 @@
-//
 // File-system system calls.
 // Mostly argument checking, since we don't trust
 // user code, and calls into file.c and fs.c.
 //
-
+#include "fs/defs.h"
+#include "fs/vfs.h"
 #include "types.h"
 #include "riscv.h"
-#include "defs.h"
+#include "../defs.h"
 #include "param.h"
 #include "stat.h"
 #include "spinlock.h"
 #include "proc.h"
 #include "sleeplock.h"
 #include "xv6fs/file.h"
-#include "xv6fs/defs.h"
+#include "defs.h"
 #include "xv6_fcntl.h"
 
 // Fetch the nth word-sized system call argument as a file descriptor
 // and return both the descriptor and the corresponding struct file.
 static int
-argfd(int n, int *pfd, struct xv6fs_file **pf)
+argfd(int n, int *pfd, struct file **pf)
 {
   int fd;
-  struct xv6fs_file *f;
+  struct file *f;
 
   argint(n, &fd);
   if(fd < 0 || fd >= NOFILE || (f=myproc()->ofile[fd]) == 0)
@@ -37,7 +37,7 @@ argfd(int n, int *pfd, struct xv6fs_file **pf)
 // Allocate a file descriptor for the given file.
 // Takes over file reference from caller on success.
 static int
-fdalloc(struct xv6fs_file *f)
+fdalloc(struct file *f)
 {
   int fd;
   struct proc *p = myproc();
@@ -54,21 +54,24 @@ fdalloc(struct xv6fs_file *f)
 uint64
 sys_dup(void)
 {
-  struct xv6fs_file *f;
+  // printf("entering sys_dup\n");
+  struct file *f;
   int fd;
 
   if(argfd(0, 0, &f) < 0)
     return -1;
   if((fd=fdalloc(f)) < 0)
     return -1;
-  xv6fs_filedup(f);
+  filedup(f);
+  // printf("exiting sys_dup\n");
   return fd;
 }
 
 uint64
 sys_read(void)
 {
-  struct xv6fs_file *f;
+  // printf("entering sys_read\n");
+  struct file *f;
   int n;
   uint64 p;
 
@@ -76,13 +79,15 @@ sys_read(void)
   argint(2, &n);
   if(argfd(0, 0, &f) < 0)
     return -1;
-  return xv6fs_fileread(f, p, n);
+  uint64 ret = fileread(f, p, n);
+  return ret;
 }
 
 uint64
 sys_write(void)
 {
-  struct xv6fs_file *f;
+  // printf("entering sys_write\n");
+  struct file *f;
   int n;
   uint64 p;
   
@@ -91,217 +96,308 @@ sys_write(void)
   if(argfd(0, 0, &f) < 0)
     return -1;
 
-  return xv6fs_filewrite(f, p, n);
+  uint64 ret = filewrite(f, p, n);
+  // printf("exiting sys_write\n");
+  return ret;
 }
 
 uint64
 sys_close(void)
 {
+  #ifdef LINK
+  printf("entering sys_close\n");
+  #endif
   int fd;
-  struct xv6fs_file *f;
+  struct file *f;
 
   if(argfd(0, &fd, &f) < 0)
     return -1;
   myproc()->ofile[fd] = 0;
-  xv6fs_fileclose(f);
+  fileclose(f);
+  #ifdef LINK
+  printf("exiting sys_close\n");
+  #endif
   return 0;
 }
 
 uint64
 sys_fstat(void)
 {
-  struct xv6fs_file *f;
+  // printf("entering sys_fstat\n");
+  struct file *f;
   uint64 st; // user pointer to struct stat
 
   argaddr(1, &st);
   if(argfd(0, 0, &f) < 0)
     return -1;
-  return xv6fs_filestat(f, st);
+  uint64 ret = filestat(f, st);
+  // printf("exiting sys_fstat\n");
+  return ret;
 }
 
 // Create the path new as a link to the same inode as old.
 uint64
 sys_link(void)
 {
+  #ifdef LINK
+    printf("entering sys_link\n");
+  #endif
   char name[DIRSIZ], new[MAXPATH], old[MAXPATH];
-  struct xv6fs_inode *dp, *ip;
+  struct inode *dp, *ip;
 
   if(argstr(0, old, MAXPATH) < 0 || argstr(1, new, MAXPATH) < 0)
     return -1;
 
-  if((ip = xv6fs_namei(old)) == 0){
+  if((ip = namei(old)) == 0){
     return -1;
   }
 
-  xv6fs_ilock(ip);
+  ilock(ip);
   if(ip->type == T_DIR){
-    xv6fs_iunlockput(ip);
+    iunlockput(ip);
     return -1;
   }
 
   ip->nlink++;
-  xv6fs_iupdate(ip);
-  xv6fs_iunlock(ip);
+  ip->op->write_inode(ip);
+  iunlock(ip);
 
-  if((dp = xv6fs_nameiparent(new, name)) == 0)
-    goto bad;
-  xv6fs_ilock(dp);
-  if(dp->dev != ip->dev || xv6fs_dirlink(dp, name, ip->inum) < 0){
-    xv6fs_iunlockput(dp);
+  if((dp = nameiparent(new, name)) == 0) {
+    printf("go to bad from line 162\n");
     goto bad;
   }
-  xv6fs_iunlockput(dp);
-  xv6fs_iput(ip);
+  ilock(dp);
+  struct dentry *de = kalloc();
+  de->parent = dp;
+  de->inode = ip;
+  strncpy(de->name, name, DIRSIZ);
+  if(dp->dev != ip->dev || dp->op->link(de) < 0){
+    iunlockput(dp);
+    kfree(de);
+    printf("go to bad from line 172\n");
+    goto bad;
+  }
+  kfree(de);
+  #ifdef LINK
+    printf("link success\n");
+  #endif
+  iunlockput(dp);
+  iput(ip);
 
+#ifdef LINK
+  printf("exiting sys_link\n");
+#endif
   return 0;
 
 bad:
-  xv6fs_ilock(ip);
+#ifdef LINK
+  printf("this is bad\n");
+#endif
+  ilock(ip);
   ip->nlink--;
-  xv6fs_iupdate(ip);
-  xv6fs_iunlockput(ip);
+  ip->op->write_inode(ip);
+  iunlockput(ip);
   return -1;
-}
-
-// Is the directory dp empty except for "." and ".." ?
-static int
-isdirempty(struct xv6fs_inode *dp)
-{
-  int off;
-  struct xv6fs_dentry de;
-
-  for(off=2*sizeof(de); off<dp->size; off+=sizeof(de)){
-    if(xv6fs_readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
-      panic("isdirempty: readi");
-    if(de.inum != 0)
-      return 0;
-  }
-  return 1;
 }
 
 uint64
 sys_unlink(void)
 {
-  struct xv6fs_inode *ip, *dp;
-  struct xv6fs_dentry de;
+  #ifdef LINK
+    printf("entering sys_unlink\n");
+  #endif
+  struct inode *ip, *dp;
   char name[DIRSIZ], path[MAXPATH];
-  uint off;
+  // uint off = 0;
 
   if(argstr(0, path, MAXPATH) < 0)
     return -1;
 
-  if((dp = xv6fs_nameiparent(path, name)) == 0){
+  if((dp = nameiparent(path, name)) == 0){
     return -1;
   }
 
-  xv6fs_ilock(dp);
+  ilock(dp);
 
   // Cannot unlink "." or "..".
-  if(xv6fs_namecmp(name, ".") == 0 || xv6fs_namecmp(name, "..") == 0)
+  if(namecmp(name, ".") == 0 || namecmp(name, "..") == 0)
     goto bad;
 
-  if((ip = xv6fs_dirlookup(dp, name, &off)) == 0)
+  struct dentry *d = dp->op->dirlookup(dp, name);
+  if (d == 0 || (ip = d->inode) == 0) 
     goto bad;
-  xv6fs_ilock(ip);
+  ilock(ip);
+
+  #ifdef LINK
+    printf("ref: %d, nlink: %d\n", ip->ref, ip->nlink);
+  #endif
 
   if(ip->nlink < 1)
     panic("unlink: nlink < 1");
-  if(ip->type == T_DIR && !isdirempty(ip)){
-    xv6fs_iunlockput(ip);
+  if(ip->type == T_DIR && !dp->op->isdirempty(ip)){
+    iunlockput(ip);
     goto bad;
   }
 
-  memset(&de, 0, sizeof(de));
-  if(xv6fs_writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
-    panic("unlink: writei");
+  // memset(&de, 0, sizeof(de));
+  // if(writei(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
+  //   panic("unlink: writei");
+  struct dentry *de = kalloc();
+  de->parent = dp;
+  de->inode = ip;
+  strncpy(de->name, name, DIRSIZ);
+  dp->op->unlink(de);
+  kfree(de);
+
   if(ip->type == T_DIR){
     dp->nlink--;
-    xv6fs_iupdate(dp);
+    dp->op->write_inode(dp);
   }
-  xv6fs_iunlockput(dp);
+  iunlockput(dp);
 
   ip->nlink--;
-  xv6fs_iupdate(ip);
-  xv6fs_iunlockput(ip);
-
+  ip->op->write_inode(ip);
+  iunlockput(ip);
+#ifdef LINK
+  printf("exiting sys_unlink\n");
+#endif
   return 0;
 
 bad:
-  xv6fs_iunlockput(dp);
+  iunlockput(dp);
+  #ifdef LINK
+    printf("exiting sys_unlink\n");
+  #endif
   return -1;
 }
 
-static struct xv6fs_inode*
+static struct inode*
 create(char *path, short type, short major, short minor)
 {
-  struct xv6fs_inode *ip, *dp;
+  // printf("entering create\n");
+  // printf("path: %s, type: %d, major: %d, minor: %d\n", path, type, major, minor);
+  struct inode *ip = 0, *dp;
   char name[DIRSIZ];
 
-  if((dp = xv6fs_nameiparent(path, name)) == 0)
+  if((dp = nameiparent(path, name)) == 0)
     return 0;
 
-  xv6fs_ilock(dp);
+  ilock(dp);
 
-  if((ip = xv6fs_dirlookup(dp, name, 0)) != 0){
-    xv6fs_iunlockput(dp);
-    xv6fs_ilock(ip);
+  // printf("gogogo\n");
+
+  struct dentry *d = dp->op->dirlookup(dp, name);
+  // printf("d = %p\n", d);
+  if(d != 0 && (ip = d->inode) != 0) {
+    // printf("create: file already exists\n");
+    iunlockput(dp);
+    ilock(ip);
     if(type == T_FILE && (ip->type == T_FILE || ip->type == T_DEVICE))
       return ip;
-    xv6fs_iunlockput(ip);
+    iunlockput(ip);
     return 0;
   }
 
-  if((ip = xv6fs_ialloc(dp->dev, type)) == 0){
-    xv6fs_iunlockput(dp);
+  if((ip = dp->op->alloc_inode(root)) == 0) {
+    // printf("create: alloc_inode failed\n");
+    iunlockput(dp);
     return 0;
   }
 
-  xv6fs_ilock(ip);
-  ip->major = major;
-  ip->minor = minor;
+  ilock(ip);
   ip->nlink = 1;
-  xv6fs_iupdate(ip);
+  ip->type = type;
+  #ifdef REF
+    printf("create inode: %d\n", ip->inum);
+    printf("create: type = %d\n", type);
+  #endif
+  ip->op->write_inode(ip);
 
-  if(type == T_DIR){  // Create . and .. entries.
-    // No ip->nlink++ for ".": avoid cyclic ref count.
-    if(xv6fs_dirlink(ip, ".", ip->inum) < 0 || xv6fs_dirlink(ip, "..", dp->inum) < 0)
+  if (type == T_DIR) {
+    #ifdef REF
+      printf("create: type is T_DIR\n");
+    #endif
+    struct dentry *cur_dir = kalloc();
+    cur_dir->parent = ip;
+    cur_dir->inode = ip;
+    strncpy(cur_dir->name, ".", DIRSIZ);
+    if (ip->op->link(cur_dir) < 0) {
+      kfree(cur_dir);
       goto fail;
+    }
+    #ifdef REF
+      printf("link success in \".\"\n");
+    #endif
+    struct dentry *parent_dir = kalloc();
+    parent_dir->parent = ip;
+    parent_dir->inode = dp;
+    strncpy(parent_dir->name, "..", DIRSIZ);
+    if (ip->op->link(parent_dir) < 0) {
+      kfree(parent_dir);
+      goto fail;
+    }
+    #ifdef REF
+      printf("link success in \"..\"\n");
+    #endif
   }
 
-  if(xv6fs_dirlink(dp, name, ip->inum) < 0)
+  struct dentry *de = kalloc();
+  de->inode = ip;
+  de->parent = dp;
+  strncpy(de->name, name, DIRSIZ);
+  if (dp->op->link(de) < 0) {
+    kfree(de);
     goto fail;
+  }
+  #ifdef REF
+      printf("link success in myself\n");
+    #endif
+  if (dp->op->create(dp, de, type, major, minor) < 0) {
+    kfree(de);
+    goto fail;
+  }
+  kfree(de);
 
   if(type == T_DIR){
+    // printf("create: type is T_DIR, now success\n");
     // now that success is guaranteed:
     dp->nlink++;  // for ".."
-    xv6fs_iupdate(dp);
+    dp->op->write_inode(dp);
   }
 
-  xv6fs_iunlockput(dp);
+  iunlockput(dp);
 
+  // printf("exiting create\n");
   return ip;
 
  fail:
   // something went wrong. de-allocate ip.
+  // printf("create: fail\n");
   ip->nlink = 0;
-  xv6fs_iupdate(ip);
-  xv6fs_iunlockput(ip);
-  xv6fs_iunlockput(dp);
+  ip->op->write_inode(ip);
+  iunlockput(ip);
+  iunlockput(dp);
   return 0;
 }
 
 uint64
 sys_open(void)
 {
+  #ifdef LINK
+  printf("entering sys_open\n");
+  #endif
   char path[MAXPATH];
-  int fd, omode;
-  struct xv6fs_file *f;
-  struct xv6fs_inode *ip;
+  int fd = 0, omode;
+  struct file *f;
+  struct inode *ip;
   int n;
 
   argint(1, &omode);
   if((n = argstr(0, path, MAXPATH)) < 0)
     return -1;
+
+  // printf("sys_open: path = %s\n", path);
+  // printf("sys_open: omode = %d\n", omode);
 
   if(omode & O_CREATE){
     ip = create(path, T_FILE, 0, 0);
@@ -309,65 +405,66 @@ sys_open(void)
       return -1;
     }
   } else {
-    if((ip = xv6fs_namei(path)) == 0){
+    if((ip = namei(path)) == 0){
       return -1;
     }
-    xv6fs_ilock(ip);
+    ilock(ip);
     if(ip->type == T_DIR && omode != O_RDONLY){
-      xv6fs_iunlockput(ip);
+      iunlockput(ip);
       return -1;
     }
   }
 
-  if(ip->type == T_DEVICE && (ip->major < 0 || ip->major >= NDEV)){
-    xv6fs_iunlockput(ip);
+  if ((f = ip->op->open(ip, omode)) == 0 || (fd = fdalloc(f)) < 0) {
+    if (f) {
+      fileclose(f);
+    }
+    iunlockput(ip);
     return -1;
   }
 
-  if((f = xv6fs_filealloc()) == 0 || (fd = fdalloc(f)) < 0){
-    if(f)
-      xv6fs_fileclose(f);
-    xv6fs_iunlockput(ip);
-    return -1;
-  }
-
-  if(ip->type == T_DEVICE){
-    f->type = FD_DEVICE;
-    f->major = ip->major;
-  } else {
-    f->type = FD_INODE;
+  if (ip->type != T_DEVICE) {
     f->off = 0;
   }
-  f->ip = ip;
+
+  f->inode = ip;
+  // printf("inode type: %d\n", ip->type);
+  f->op = ip->op;
   f->readable = !(omode & O_WRONLY);
   f->writable = (omode & O_WRONLY) || (omode & O_RDWR);
 
   if((omode & O_TRUNC) && ip->type == T_FILE){
-    xv6fs_itrunc(ip);
+    // printf("%truncating file\n");
+    ip->op->trunc(ip);
   }
 
-  xv6fs_iunlock(ip);
-
+  iunlock(ip);
+#ifdef LINK
+  printf("exiting sys_open\n");
+#endif
   return fd;
 }
 
 uint64
 sys_mkdir(void)
 {
+  // printf("entering sys_mkdir\n");
   char path[MAXPATH];
-  struct xv6fs_inode *ip;
+  struct inode *ip;
 
   if(argstr(0, path, MAXPATH) < 0 || (ip = create(path, T_DIR, 0, 0)) == 0){
     return -1;
   }
-  xv6fs_iunlockput(ip);
+  iunlockput(ip);
+  // printf("exiting sys_mkdir\n");
   return 0;
 }
 
 uint64
 sys_mknod(void)
 {
-  struct xv6fs_inode *ip;
+  // printf("entering sys_mknod\n");
+  struct inode *ip;
   char path[MAXPATH];
   int major, minor;
 
@@ -377,34 +474,38 @@ sys_mknod(void)
      (ip = create(path, T_DEVICE, major, minor)) == 0){
     return -1;
   }
-  xv6fs_iunlockput(ip);
+  iunlockput(ip);
+  // printf("exiting sys_mknod\n");
   return 0;
 }
 
 uint64
 sys_chdir(void)
 {
+  // printf("entering sys_chdir\n");
   char path[MAXPATH];
-  struct xv6fs_inode *ip;
+  struct inode *ip;
   struct proc *p = myproc();
   
-  if(argstr(0, path, MAXPATH) < 0 || (ip = xv6fs_namei(path)) == 0){
+  if(argstr(0, path, MAXPATH) < 0 || (ip = namei(path)) == 0){
     return -1;
   }
-  xv6fs_ilock(ip);
+  ilock(ip);
   if(ip->type != T_DIR){
-    xv6fs_iunlockput(ip);
+    iunlockput(ip);
     return -1;
   }
-  xv6fs_iunlock(ip);
-  xv6fs_iput(p->cwd);
+  iunlock(ip);
+  iput(p->cwd);
   p->cwd = ip;
+  // printf("exiting sys_chdir\n");
   return 0;
 }
 
 uint64
 sys_exec(void)
 {
+  // printf("entering sys_exec\n");
   char path[MAXPATH], *argv[MAXARG];
   int i;
   uint64 uargv, uarg;
@@ -434,9 +535,13 @@ sys_exec(void)
 
   int ret = exec(path, argv);
 
+  // printf("finish exec\n");
+  // printf("ret = %d\n", ret);
+
   for(i = 0; i < NELEM(argv) && argv[i] != 0; i++)
     kfree(argv[i]);
 
+  // printf("exiting sys_exec\n");
   return ret;
 
  bad:
@@ -448,8 +553,9 @@ sys_exec(void)
 uint64
 sys_pipe(void)
 {
+  // printf("entering sys_pipe\n");
   uint64 fdarray; // user pointer to array of two integers
-  struct xv6fs_file *rf, *wf;
+  struct file *rf, *wf;
   int fd0, fd1;
   struct proc *p = myproc();
 
@@ -460,17 +566,18 @@ sys_pipe(void)
   if((fd0 = fdalloc(rf)) < 0 || (fd1 = fdalloc(wf)) < 0){
     if(fd0 >= 0)
       p->ofile[fd0] = 0;
-    xv6fs_fileclose(rf);
-    xv6fs_fileclose(wf);
+    fileclose(rf);
+    fileclose(wf);
     return -1;
   }
   if(copyout(p->pagetable, fdarray, (char*)&fd0, sizeof(fd0)) < 0 ||
      copyout(p->pagetable, fdarray+sizeof(fd0), (char *)&fd1, sizeof(fd1)) < 0){
     p->ofile[fd0] = 0;
     p->ofile[fd1] = 0;
-    xv6fs_fileclose(rf);
-    xv6fs_fileclose(wf);
+    fileclose(rf);
+    fileclose(wf);
     return -1;
   }
+  // printf("exiting sys_pipe\n");
   return 0;
 }

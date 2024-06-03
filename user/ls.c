@@ -41,6 +41,8 @@ ls(char *path)
     return;
   }
 
+  // printf("real ls: %s\n", path);
+
   switch(st.type){
   case T_DEVICE:
   case T_FILE:
@@ -48,6 +50,7 @@ ls(char *path)
     break;
 
   case T_DIR:
+    // printf("this is a directory\n");
     if(strlen(path) + 1 + DIRSIZ + 1 > sizeof buf){
       printf("ls: path too long\n");
       break;
@@ -55,10 +58,13 @@ ls(char *path)
     strcpy(buf, path);
     p = buf+strlen(buf);
     *p++ = '/';
+    // int res = read(fd, &de, sizeof(de));
+    // printf("res: %d\n", res);
     while(read(fd, &de, sizeof(de)) == sizeof(de)){
       if(de.inum == 0)
         continue;
       memmove(p, de.name, DIRSIZ);
+      // printf("dentry name: %s\n", de.name);
       p[DIRSIZ] = 0;
       if(stat(buf, &st) < 0){
         printf("ls: cannot stat %s\n", buf);

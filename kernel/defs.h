@@ -5,14 +5,14 @@
 
 struct buf;
 struct context;
-struct xv6fs_file;
-struct xv6fs_inode;
+struct file;
+struct inode;
 struct pipe;
 struct proc;
 struct spinlock;
 struct sleeplock;
 struct stat;
-struct xv6fs_super_block;
+struct super_block;
 
 // console.c
 void            consoleinit(void);
@@ -28,7 +28,7 @@ void            kfree(void *);
 void            kinit(void);
 
 // pipe.c
-int             pipealloc(struct xv6fs_file**, struct xv6fs_file**);
+int             pipealloc(struct file**, struct file**);
 void            pipeclose(struct pipe*, int);
 int             piperead(struct pipe*, uint64, int);
 int             pipewrite(struct pipe*, uint64, int);

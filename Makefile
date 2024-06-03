@@ -25,6 +25,8 @@ OBJS = \
   $K/fs/exec.o \
   $K/fs/sysfile.o \
   $K/fs/pipe.o \
+  $K/fs/file.o \
+  $K/fs/fs.o \
   $K/fs/xv6fs/fs.o \
   $K/fs/xv6fs/file.o \
   $K/fs/xv6fs/bio.o \

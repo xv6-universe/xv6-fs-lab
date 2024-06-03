@@ -4,13 +4,15 @@
 #include "riscv.h"
 #include "defs.h"
 #include "fs/xv6fs/defs.h"
-
+#include "fs/vfs.h"
+#include "fs/defs.h"
 volatile static int started = 0;
 
 // start() jumps here in supervisor mode on all CPUs.
 void
 main()
 {
+  printf("cpu id: %d\n", cpuid());
   if(cpuid() == 0){
     consoleinit();
     printfinit();
@@ -26,15 +28,16 @@ main()
     plicinit();      // set up interrupt controller
     plicinithart();  // ask PLIC for device interrupts
     binit();         // buffer cache
-    xv6fs_iinit();         // inode table
-    xv6fs_fileinit();      // file table
+    iinit();         // inode table
+    fileinit();      // file table
     virtio_disk_init(); // emulated hard disk
     userinit();      // first user process
     __sync_synchronize();
     started = 1;
   } else {
-    while(started == 0)
-      ;
+    while(started == 0) {
+      printf("Luda Chen");
+    }
     __sync_synchronize();
     printf("hart %d starting\n", cpuid());
     kvminithart();    // turn on paging
