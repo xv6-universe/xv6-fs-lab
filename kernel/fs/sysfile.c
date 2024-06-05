@@ -163,7 +163,7 @@ sys_link(void)
   iunlock(ip);
 
   if((dp = nameiparent(new, name)) == 0) {
-    printf("go to bad from line 162\n");
+    // printf("go to bad from line 162\n");
     goto bad;
   }
   ilock(dp);
@@ -174,7 +174,7 @@ sys_link(void)
   if(dp->dev != ip->dev || dp->op->link(de) < 0){
     iunlockput(dp);
     kfree(de);
-    printf("go to bad from line 172\n");
+    // printf("go to bad from line 172\n");
     goto bad;
   }
   kfree(de);

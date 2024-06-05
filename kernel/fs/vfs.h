@@ -142,4 +142,6 @@ struct filesystem_operations {
   void (*init) (void);
   // get inode
   struct inode *(*geti) (uint dev, uint inum, int inc_ref);
+  // update lock
+  void (*update_lock) (struct inode *ino);
 };

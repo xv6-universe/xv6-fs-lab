@@ -460,7 +460,7 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
-        printf("running pid: %d\n", p->pid);
+        // printf("running pid: %d\n", p->pid);
         swtch(&c->context, &p->context);
 
         // Process is done running for now.

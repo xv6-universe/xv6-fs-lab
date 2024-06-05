@@ -45,4 +45,4 @@ int                 writei(struct inode*, int, uint64, uint, uint);
 void                itrunc(struct inode*);
 
 // #define REF
-#define LINK
+// #define LINK

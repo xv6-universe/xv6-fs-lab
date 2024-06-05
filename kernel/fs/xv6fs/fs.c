@@ -608,7 +608,6 @@ int xv6fs_link(struct dentry *target) {
   #endif
   if (dd != 0 && (ino = dd->inode) != 0) {
     iput(ino);
-    printf("link: file exists\n");
     return -1;
   }
 
@@ -721,6 +720,33 @@ struct inode *xv6fs_geti(uint dev, uint inum, int inc_ref) {
   return ino;
 }
 
+void xv6fs_update_lock(struct inode *ino) {
+  struct xv6fs_inode *ip = kalloc();
+    memset(ip, 0, sizeof(*ip));
+    ino->private = ip;
+    struct buf *bp = bread(ino->dev, IBLOCK(ino->inum, sb));
+    struct dinode *dip = (struct dinode*)bp->data + ino->inum%IPB;
+    ip->type = dip->type;
+    ip->major = dip->major;
+    ip->minor = dip->minor;
+    ip->nlink = dip->nlink;
+    ip->size = dip->size;
+    ip->dev = ino->dev;
+    ino->type = ip->type;
+    ino->nlink = dip->nlink;
+    ino->size = dip->size;
+    ino->dev = ino->dev;
+    ino->ref = 1;
+    memmove(ip->addrs, dip->addrs, sizeof(ip->addrs));
+    #ifdef REF
+      printf("dip: %p\n", dip);
+      printf("geti: ino: %d has type %d\n", inum, ino->type);
+      printf("geti: ino: %d has nlink %d\n", inum, ino->nlink);
+      printf("geti: ino: %d has address %p\n", inum, ip->addrs);
+    #endif
+    brelse(bp);
+}
+
 static struct filesystem_operations xv6fs_ops = {
   .mount = xv6fs_mount,
   .umount = xv6fs_umount,
@@ -741,7 +767,9 @@ static struct filesystem_operations xv6fs_ops = {
   .isdirempty = xv6fs_isdirempty,
   .init = xv6fs_fsinit,
   .geti = xv6fs_geti,
+  .update_lock = xv6fs_update_lock,
 };
+
 
 
 struct filesystem_type xv6fs = {

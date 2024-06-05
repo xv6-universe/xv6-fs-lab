@@ -242,7 +242,9 @@ ilock(struct inode *ip)
 
   acquiresleep(&ip->lock);
   // printf("ip->op: %p\n", ip->op);
-  ip->op->geti(ip->dev, ip->inum, 0);
+  if (ip->private == 0) {
+    ip->op->update_lock(ip);
+  }
   // printf("ilock done\n");
 }
 
@@ -281,6 +283,7 @@ void
 iput(struct inode *ip)
 {
   // printf("entering iput\n");
+  if (ip->private == 0) return;
   
   if(ip->ref == 1  && ip->nlink == 0) {
     // inode has no links and no other references: truncate and free.
@@ -289,8 +292,9 @@ iput(struct inode *ip)
     // so this acquiresleep() won't block (or deadlock).
     acquiresleep(&ip->lock);
 
-    ip->op->trunc(ip);
     ip->type = 0;
+    
+    ip->op->trunc(ip);
     ip->op->write_inode(ip);
 
     ip->op->free_inode(ip);
